@@ -1,4 +1,4 @@
-f=open("input.txt","r")
+f=open("../input.txt","r")
 text=f.read()
 
 sum=0
