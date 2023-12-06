@@ -1,5 +1,5 @@
 from parse import parse
-
+import functools
 
 class Reveal:
     def __init__(self,cubes):
@@ -44,16 +44,21 @@ class Game:
     
     def isValid(self,validationMap):
         return all([reveal.isvalid(validationMap) for reveal in self.reveals])
-    
+
+    def minimumCubes(self):
+        mCubes=dict()
+        for reveal in self.reveals:
+            for color,amount in reveal.cubes.items():
+                if color not in mCubes or amount>mCubes[color]:
+                    mCubes[color]=amount
+        return mCubes
+
     def __str__(self):
         s="{Game: "+str(self.id_)+", reveals: ["
         for reveal in self.reveals:
             s+=str(reveal)+", "
         return s[:-2]+"]}"
-
     
-
-validationMap={"red":12,"green":13,"blue":14}
 file=open("../input1.txt")
 input=file.read()
 file.close()
@@ -62,9 +67,9 @@ games=[]
 for line in input.splitlines():
     games.append(Game.parse(line))
 
-valid_games=[game for game in games if game.isvalid(validationMap)]
-print(sum([game.id_ for game in valid_games]))
+total=0
+for game in games:
+    mCubes=list(game.minimumCubes().values())
+    total+=functools.reduce(lambda a,b: a*b,mCubes)
 
-
-
-
+print(total)
