@@ -12,18 +12,18 @@ class Range:
         return self.start<=value<=self.end
     
     def convert(self,start,end):
-        if start>end:
+        #Note: | represents the start and end of the ranges, 0000... represents [start,end]
+        if start>end: #for if we do -1,+1 with a single-value range
             return [],[]
-        elif self.start<=start and end<=self.end:
+        elif self.start<=start and end<=self.end: # | 0000000 |
             return [(start+self.diff,end+self.diff)],[]
-        elif start<=self.start and self.end<=end:
-
+        elif start<=self.start and self.end<=end: # 000|00000|000
             return [(self.start+self.diff,self.end+self.diff)],[(start,self.start-1),(self.end+1,end)]
-        elif start<=self.start and end<=self.end:
+        elif start<=self.start and end<=self.end: # 000|000 |
             return [(self.start+self.diff,end+self.diff)],[(start,self.start-1)]
-        elif self.start<=start and self.end<=end:
+        elif self.start<=start and self.end<=end: # | 00000|00000
             return [(start+self.diff,self.end+self.diff)],[(self.end+1,end)]
-        else:
+        else: #just in case
             return [],[]
 
 
@@ -43,7 +43,7 @@ class ConversionNode:
         diff=toStart-fromStart
         self.ranges+=[Range(fromStart,fromEnd,diff)]
 
-    def order_all(self):
+    def order_all(self): #turn all range lists into ordered lists
         self.ranges.sort(key=lambda x: x.start)
         if self.next is not None:
             self.next.order_all()
@@ -51,19 +51,19 @@ class ConversionNode:
     def convert(self,start,end):
         converted=[]
         toConvert=[(start,end)]
-        while toConvert!=[]:
+        while toConvert!=[]: #while there are values to convert...
             s,e=toConvert.pop(0)
-            indStart=bisect_left(self.ranges,s,key=lambda x:x.end)
-            if indStart>=len(self.ranges):
+            indStart=bisect_left(self.ranges,s,key=lambda x:x.end) #smallest range that ends before "start"
+            if indStart>=len(self.ranges): #bigger than any range
                 converted+=[(s+0,e+0)]
             else:
                 r=self.ranges[indStart]
-                if r.contains(s):
+                if r.contains(s): #the start is in
                     convDone,convTodo=r.convert(s,e)
-                elif r.contains(e):
+                elif r.contains(e): #the start is out, but the end is in, so the start is directly converted and the end will be dealt later
                     convDone=[(s+0,r.start-1+0)]
                     convTodo=[(r.start,e)]
-                else:
+                else: #range is outside any node, so convert directly
                     convDone=[(s+0,e+0)]
                     convTodo=[]
                 converted+=convDone
@@ -92,9 +92,9 @@ class Almanac:
                 break
             valuesCopy=values[:]
             values=[]
-            for seedStart,seedEnd in valuesCopy:
+            for seedStart,seedEnd in valuesCopy: #convert each value
                 values+=curr.convert(seedStart,seedEnd)
-            curr=curr.next
+            curr=curr.next #pass the values along the pipeline
         return values
     
     def order_all(self):
