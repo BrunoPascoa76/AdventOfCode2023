@@ -1,113 +1,143 @@
 from parse import parse
+from bisect import bisect_left
+from time import perf_counter_ns
 
-class ConversionMap:
-    def __init__(self,src,dst):
-        self.src=src
-        self.dst=dst
-        self.ranges=dict()
-
-    def addRange(self,line):
-        dstStart,srcStart,length=parse("{} {} {}",line)
-        dstStart=int(dstStart)
-        srcStart=int(srcStart)
-        length=int(length)
-
-        self.ranges[srcStart,srcStart+length-1]=dstStart
-
-    def convert(self,value):
-        for (srcStart,srcEnd),dstStart in self.ranges.items():
-            if srcStart<=value<=srcEnd:
-                return dstStart+(value-srcStart)
-        return value
+class Range:
+    def __init__(self,start,end,diff):
+        self.start=start
+        self.end=end
+        self.diff=diff
     
-    def get_ranges(self,src1,src2): #maps a src range into a dst range (for flattening)
-        if src1>src2:
-            return dict()
-        elif src1==src2:
-            return {(src1,src1):(src1,src1)}
-            
-        src1End=[end for start,end in self.ranges if start<=src1<=end]
-        if src1End==[]: #src1 is mapped so get the first range that is
-            in_between=[start for start,end in self.ranges if src1<start and end<src2]
-            if in_between==[]: #there's nothing in between
-                return {(src1,src2):(src1,src2)}
-            else:
-                src1End=min(in_between)-1 #the range of unmapped
+    def contains(self,value):
+        return self.start<=value<=self.end
+    
+    def convert(self,start,end):
+        if start>end:
+            return [],[]
+        elif self.start<=start and end<=self.end:
+            return [(start+self.diff,end+self.diff)],[]
+        elif start<=self.start and self.end<=end:
+
+            return [(self.start+self.diff,self.end+self.diff)],[(start,self.start-1),(self.end+1,end)]
+        elif start<=self.start and end<=self.end:
+            return [(self.start+self.diff,end+self.diff)],[(start,self.start-1)]
+        elif self.start<=start and self.end<=end:
+            return [(start+self.diff,self.end+self.diff)],[(self.end+1,end)]
         else:
-            src1End=min((src1End[0],src2))
+            return [],[]
 
-        return {(src1,src1End):(self.convert(src1),self.convert(src1End))}.update(self.get_ranges(src1End+1,src2))
 
+class ConversionNode:
+    def __init__(self):
+        self.next=None
+        self.ranges=[]
+
+    def add_next(self, node):
+        if self.next is None:
+            self.next=node
+        else:
+            self.next.add_next(node)
+    
+    def add_range(self,fromStart,toStart,length):
+        fromEnd=fromStart+length-1
+        diff=toStart-fromStart
+        self.ranges+=[Range(fromStart,fromEnd,diff)]
+
+    def order_all(self):
+        self.ranges.sort(key=lambda x: x.start)
+        if self.next is not None:
+            self.next.order_all()
+        
+    def convert(self,start,end):
+        converted=[]
+        toConvert=[(start,end)]
+        while toConvert!=[]:
+            s,e=toConvert.pop(0)
+            indStart=bisect_left(self.ranges,s,key=lambda x:x.end)
+            if indStart>=len(self.ranges):
+                converted+=[(s+0,e+0)]
+            else:
+                r=self.ranges[indStart]
+                if r.contains(s):
+                    convDone,convTodo=r.convert(s,e)
+                elif r.contains(e):
+                    convDone=[(s+0,r.start-1+0)]
+                    convTodo=[(r.start,e)]
+                else:
+                    convDone=[(s+0,e+0)]
+                    convTodo=[]
+                converted+=convDone
+                toConvert+=convTodo
+        return converted
 
 
 
 
 class Almanac:
     def __init__(self,initialSeeds):
-        self.conversions=dict()
         self.initialSeeds=initialSeeds
+        self.head=None
 
-    def addConversion(self,conversion):
-        src=conversion.src
-        dst=conversion.dst
-        if src not in self.conversions:
-            self.conversions[src]=dict()
-        self.conversions[src][dst]=conversion
+    def add_conversion(self,conversion):
+        if self.head is None:
+            self.head=conversion
+        else:
+            self.head.add_next(conversion)
 
-    def convert(self,srcValue,srcType,dstType):
-        if srcType not in self.conversions:
-            return None
-        localConversions=self.conversions[srcType]
+    def convert(self):
+        curr=self.head
+        values=self.initialSeeds
+        while True:
+            if curr is None:
+                break
+            valuesCopy=values[:]
+            values=[]
+            for seedStart,seedEnd in valuesCopy:
+                values+=curr.convert(seedStart,seedEnd)
+            curr=curr.next
+        return values
+    
+    def order_all(self):
+        self.head.order_all()
 
-        if dstType in localConversions:
-            return localConversions[dstType].convert(srcValue)
-
-        for t,c in localConversions.items(): #basically recursive DFS
-            result=self.convert(c.convert(srcValue),t,dstType)
-            if result is not None:
-                return result
-        return None 
-
-    def getSmallestDst(self):
-        ranges=[]
-        srcConverter="seed"
-        dstConverter="soil"
-        for seedStart,seedEnd in self.initialSeeds:
-
-
-
-           
-
-            
-
+start=perf_counter_ns()
 file=open("../input.txt")
 input=file.read()
 file.close()
 almanac=None
-conversionMap=None
+conversion=None
 
 for line in input.splitlines():
     if line=="":
         continue
     if almanac is None:
         seedInfo=line.split(":")[1]
-        seedInfo=seedInfo.lstrip(" ").split(" ")
+        seedInfoList=[int(seed) for seed in seedInfo.lstrip(" ").split(" ")]
         initialSeeds=[]
-        for i in range(0,len(seedInfo),2):
-            seedStart=int(seedInfo[i])
-            seedEnd=seedStart+int(seedInfo[i+1])-1
-            initialSeeds+=[(seedStart,seedEnd)]
+        for i in range(0,len(seedInfoList),2):
+            initialSeeds+=[(seedInfoList[i],seedInfoList[i]+seedInfoList[i+1]-1)]
         almanac=Almanac(initialSeeds)
         continue
 
     if line.endswith(":"):
-        if conversionMap is not None:
-            almanac.addConversion(conversionMap)
-        src,dst=parse("{}-to-{} map:",line)
-        conversionMap=ConversionMap(src,dst)
+        if conversion is not None:
+            almanac.add_conversion(conversion)
+        conversion=ConversionNode()
     else:
-        conversionMap.addRange(line)
-if conversionMap is not None:
-    almanac.addConversion(conversionMap)
+        dstStart,srcStart,length=parse("{} {} {}",line)
+        dstStart=int(dstStart)
+        srcStart=int(srcStart)
+        length=int(length)
+        conversion.add_range(srcStart,dstStart,length)
     
-print(almanac.getSmallestDst("location"))
+almanac.add_conversion(conversion)
+middle=perf_counter_ns()
+almanac.order_all()
+
+fields=almanac.convert()
+minField=min([f[0] for f in fields])
+end=perf_counter_ns()
+print(minField)
+print("total time: ",end-start)
+print("importing time: ",middle-start)
+print("converting time (no read input): ",end-middle)
